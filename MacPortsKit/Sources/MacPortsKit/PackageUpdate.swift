@@ -51,12 +51,12 @@ public enum PackageVersions {
 	}
 	
 	/// The version without Homebrew revisions (`_2`), MacPorts revisions and variants (`_1+gnutls`).
-	static func base(_ version: String) -> String {
+	public static func base(_ version: String) -> String {
 		String(version.prefix { $0 != "_" && $0 != "+" })
 	}
 	
 	/// How `candidate` relates to `reference`, comparing numbers numerically (`10` is newer than `9`).
-	static func relation(of candidate: String, to reference: String) -> Relation {
+	public static func relation(of candidate: String, to reference: String) -> Relation {
 		switch base(candidate).compare(base(reference), options: .numeric) {
 		case .orderedDescending: return .newer
 		case .orderedAscending: return .older

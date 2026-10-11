@@ -176,6 +176,11 @@ enum MacPortsPackageChecker {
 		}.sorted()
 	}
 	
+	/// The names of all ports that are installed and active, from a single `port installed` call.
+	static func activePorts() -> Set<String> {
+		Set(MacPortsParser.parseInstalled(CommandRunner.run(portPath, ["installed"]).output).filter(\.isActive).map(\.name))
+	}
+	
 	/// Whether the port is currently installed and active.
 	static func isActive(_ name: String) -> Bool {
 		MacPortsParser.parseInstalled(CommandRunner.run(portPath, ["installed", name]).output).contains { $0.name == name && $0.isActive }

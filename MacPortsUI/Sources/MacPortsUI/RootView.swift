@@ -7,6 +7,7 @@ struct RootView: View {
 		case outdated = "Outdated"
 		case installed = "Installed"
 		case browse = "Browse"
+		case migrate = "Migrate"
 		case activity = "Activity"
 		var id: String { rawValue }
 		var symbol: String {
@@ -14,6 +15,7 @@ struct RootView: View {
 			case .outdated: return "arrow.down.circle"
 			case .installed: return "shippingbox"
 			case .browse: return "magnifyingglass"
+			case .migrate: return "arrow.left.arrow.right"
 			case .activity: return "list.bullet.rectangle"
 			}
 		}
@@ -23,6 +25,7 @@ struct RootView: View {
 	@StateObject private var outdated: OutdatedModel
 	@StateObject private var installed: InstalledModel
 	@StateObject private var browse: BrowseModel
+	@StateObject private var migrate: MigrateModel
 	@State private var section: Section? = .outdated
 	@State private var showingHelper = false
 	
@@ -32,6 +35,7 @@ struct RootView: View {
 		_outdated = StateObject(wrappedValue: OutdatedModel(activity: activity))
 		_installed = StateObject(wrappedValue: InstalledModel(activity: activity))
 		_browse = StateObject(wrappedValue: BrowseModel(activity: activity))
+		_migrate = StateObject(wrappedValue: MigrateModel(activity: activity))
 	}
 	
 	var body: some View {
@@ -46,6 +50,7 @@ struct RootView: View {
 			case .outdated: OutdatedView(model: outdated)
 			case .installed: InstalledView(model: installed)
 			case .browse: BrowseView(model: browse)
+			case .migrate: MigrateView(model: migrate)
 			case .activity: ActivityView(activity: activity)
 			}
 		}

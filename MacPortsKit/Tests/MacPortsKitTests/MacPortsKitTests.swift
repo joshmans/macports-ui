@@ -151,7 +151,7 @@ final class MacPortsKitTests: XCTestCase {
 	
 	func testSwitchRefusesOversizedGroups() {
 		let reverse = ["aom": (0..<30).map { "dep\($0)" }]
-		let plan = PackageSwitch.plan(selected: [brew("aom", alternative: "aom")], reverseDependencies: reverse, alternative: { $0 })
+		let plan = PackageSwitch.plan(selected: [brew("aom", alternative: "aom")], reverseDependencies: reverse, alternative: { $0 }, maximumGroupSize: 25)
 		XCTAssertTrue(plan.groups.isEmpty)
 		XCTAssertTrue(plan.blocked.first?.reason.contains("limit") ?? false)
 	}
@@ -173,7 +173,6 @@ final class MacPortsKitTests: XCTestCase {
 		XCTAssertTrue(plan.groups.isEmpty)
 		XCTAssertEqual(plan.blocked.count, 1)
 	}
-	
 	
 	// MARK: Privileged actions
 	
@@ -362,5 +361,209 @@ final class MacPortsKitTests: XCTestCase {
 		XCTAssertEqual(PackageVersions.relation(of: "1.10.0", to: "1.9.0"), .newer, "Numbers compare numerically")
 		XCTAssertEqual(PackageVersions.relation(of: "2026.08.19_0+ffmpeg", to: "2026.8.19"), .same)
 		XCTAssertEqual(PackageVersions.base("1.25.0_1+gnutls"), "1.25.0")
+	}
+	
+	func testLargeChainsWithinTheLimitAreSwitched() {
+		let reverse = ["xz": (0..<87).map { "dep\($0)" }]
+		let plan = PackageSwitch.plan(selected: [brew("xz", alternative: "xz")], reverseDependencies: reverse, alternative: { $0 })
+		XCTAssertEqual(plan.groups.first?.formulae.count, 88)
+		XCTAssertEqual(plan.groups.first?.formulae.last, "xz", "The selected formula is removed last")
+	}
+	
+	func testOneUnswitchablePackageDoesNotBlockTheOthers() {
+		let reverse = ["bad": ["blocker"], "good": ["leaf"]]
+		let plan = PackageSwitch.plan(selected: [brew("bad", alternative: "bad"), brew("good", alternative: "good")], reverseDependencies: reverse, alternative: { $0 == "blocker" ? nil : $0 })
+		XCTAssertEqual(plan.groups.count, 1)
+		XCTAssertEqual(Set(plan.groups[0].formulae), ["good", "leaf"])
+		XCTAssertEqual(plan.blocked.map(\.package), ["bad"])
+		XCTAssertTrue(plan.blocked[0].reason.contains("blocker"))
+	}
+	
+	func testSharedDependentsOfSwitchablePackagesFormOneGroupEvenWhenAnotherPackageIsBlocked() {
+		let reverse = ["a": ["shared"], "b": ["shared"], "c": ["nope"]]
+		let plan = PackageSwitch.plan(selected: [brew("a", alternative: "a"), brew("b", alternative: "b"), brew("c", alternative: "c")], reverseDependencies: reverse, alternative: { $0 == "nope" ? nil : $0 })
+		XCTAssertEqual(plan.groups.count, 1)
+		XCTAssertEqual(Set(plan.groups[0].formulae), ["a", "b", "shared"])
+		XCTAssertEqual(plan.blocked.map(\.package), ["c"])
+	}
+	
+	func testMergedChainsOverTheLimitAreBlockedTogether() {
+		let reverse = ["a": (0..<20).map { "x\($0)" }, "b": (10..<30).map { "x\($0)" }]
+		let plan = PackageSwitch.plan(selected: [brew("a", alternative: "a"), brew("b", alternative: "b")], reverseDependencies: reverse, alternative: { $0 }, maximumGroupSize: 25)
+		XCTAssertTrue(plan.groups.isEmpty)
+		XCTAssertEqual(Set(plan.blocked.map(\.package)), ["a", "b"])
+	}
+	
+	func testLooksUpEachEquivalentOnlyOnce() {
+		var lookups = [String: Int]()
+		let reverse = ["a": ["shared"], "b": ["shared"]]
+		_ = PackageSwitch.plan(selected: [brew("a", alternative: "a"), brew("b", alternative: "b")], reverseDependencies: reverse, alternative: { lookups[$0, default: 0] += 1; return $0 })
+		XCTAssertTrue(lookups.values.allSatisfy { $0 == 1 }, "\(lookups)")
+	}
+	
+	// MARK: Homebrew
+	
+	func testIntelMacOS26IgnoresArmOnlyBottles() {
+		let files: Set<String> = ["arm64_tahoe", "arm64_sequoia", "arm64_linux", "x86_64_linux"]
+		XCTAssertFalse(HomebrewBottles.hasBottle(files: files, arm64: false, macOSMajor: 26))
+	}
+	
+	func testIntelFallsBackToOlderMacOSBottle() {
+		XCTAssertTrue(HomebrewBottles.hasBottle(files: ["sonoma"], arm64: false, macOSMajor: 26))
+		XCTAssertFalse(HomebrewBottles.hasBottle(files: ["tahoe"], arm64: false, macOSMajor: 15), "A newer macOS bottle must not be used")
+		XCTAssertTrue(HomebrewBottles.hasBottle(files: ["all"], arm64: false, macOSMajor: 26))
+	}
+	
+	func testAppleSiliconUsesArmBottles() {
+		XCTAssertTrue(HomebrewBottles.hasBottle(files: ["arm64_tahoe"], arm64: true, macOSMajor: 26))
+		XCTAssertFalse(HomebrewBottles.hasBottle(files: ["tahoe"], arm64: true, macOSMajor: 26))
+	}
+	
+	func testUninstallNeverAutoremovesOtherFormulae() {
+		XCTAssertEqual(HomebrewClient.uninstallEnvironment["HOMEBREW_NO_AUTOREMOVE"], "1")
+	}
+	
+	func testBuildsReverseDependenciesFromBrewJSON() {
+		let json = """
+		{"formulae":[
+		 {"name":"aom","installed":[{"runtime_dependencies":[]}]},
+		 {"name":"ffmpeg","installed":[{"runtime_dependencies":[{"full_name":"aom"},{"full_name":"x265"}]}]},
+		 {"name":"yt-dlp","installed":[{"runtime_dependencies":[{"full_name":"deno"}]}]}
+		]}
+		"""
+		let reverse = HomebrewClient.reverseDependencies(fromInfoJSON: json)
+		XCTAssertEqual(reverse["aom"], ["ffmpeg"])
+		XCTAssertEqual(reverse["deno"], ["yt-dlp"])
+	}
+	
+	func testReadsBrewJSONAfterWarnings() {
+		XCTAssertNotNil(HomebrewClient.json("Warning: something\n{\"formulae\": []}"))
+		XCTAssertNil(HomebrewClient.json("no json here"))
+	}
+	
+	func testChunksArrays() {
+		XCTAssertEqual([1, 2, 3, 4, 5].chunked(into: 2), [[1, 2], [3, 4], [5]])
+		XCTAssertEqual([Int]().chunked(into: 3), [])
+	}
+	
+	func testLogBufferCollectsAndForwardsOutput() {
+		let forwarded = ForwardedBox()
+		let buffer = LogBuffer(forward: { forwarded.add($0) })
+		buffer.add("a")
+		buffer.add("b")
+		XCTAssertEqual(buffer.text, "ab")
+		XCTAssertEqual(forwarded.items, ["a", "b"])
+	}
+	
+}
+
+private final class ForwardedBox: @unchecked Sendable {
+	private let lock = NSLock()
+	private var storage = [String]()
+	func add(_ text: String) { lock.lock(); storage.append(text); lock.unlock() }
+	var items: [String] { lock.lock(); defer { lock.unlock() }; return storage }
+}
+
+// MARK: - Switch execution
+
+/// A pretend machine: ports become active when installed, and formulae can be made to fail on removal.
+private final class FakeBackend: SwitchBackend, @unchecked Sendable {
+	var unavailableReason: String?
+	var installable: Set<String>
+	var failingRemovals = Set<String>()
+	var alreadyGone = Set<String>()
+	private(set) var actions = [PortAction]()
+	private(set) var removed = [String]()
+	private var active = Set<String>()
+	
+	init(installable: Set<String>) { self.installable = installable }
+	
+	func runPortActions(_ actions: [PortAction], onOutput: @escaping (String) -> Void) {
+		self.actions = actions
+		for case .install(let ports, _, _) in actions { active.formUnion(ports.filter(installable.contains)) }
+		onOutput("port output\n")
+	}
+	
+	func activePorts() -> Set<String> { active }
+	func isInstalled(formula: String) -> Bool { !alreadyGone.contains(formula) && !removed.contains(formula) }
+	
+	func uninstall(formula: String) -> CommandRunner.Result {
+		if failingRemovals.contains(formula) { return .init(status: 1, output: "Error: \(formula) is required by something") }
+		removed.append(formula)
+		return .init(status: 0, output: "Uninstalled \(formula)")
+	}
+}
+
+final class SwitchExecutionTests: XCTestCase {
+	
+	private func preview(_ groups: [[String]], outdatedIndex: [String] = []) -> SwitchPreview {
+		let planGroups = groups.map { PackageSwitch.Group(formulae: $0, ports: Dictionary(uniqueKeysWithValues: $0.map { ($0, $0) }), pulledIn: []) }
+		return SwitchPreview(groups: groups.map { $0.map { .init(formula: $0, port: $0, portVersion: nil, installedVersion: nil, isOlder: false, isPulledIn: false) } },
+							 blocked: [], outdatedIndex: outdatedIndex, planGroups: planGroups)
+	}
+	
+	func testRemovesFormulaeDependentsFirstOnceEveryPortIsInstalled() {
+		let backend = FakeBackend(installable: ["a", "b", "c"])
+		let result = HomebrewClient.executeSwitchBlocking(preview([["c", "b", "a"]]), backend: backend, onOutput: nil)
+		XCTAssertEqual(result.status, 0)
+		XCTAssertEqual(backend.removed, ["c", "b", "a"])
+		XCTAssertTrue(result.output.contains("Switched 3 package(s)"))
+	}
+	
+	func testKeepsAWholeGroupInHomebrewWhenAnyPortIsMissing() {
+		let backend = FakeBackend(installable: ["a", "b"])
+		let result = HomebrewClient.executeSwitchBlocking(preview([["c", "b", "a"], ["x"]]), backend: backend, onOutput: nil)
+		XCTAssertEqual(backend.removed, [], "Nothing is removed from a group that is not fully installed")
+		XCTAssertEqual(result.status, 1)
+		XCTAssertTrue(result.output.contains("MacPorts did not install c") && result.output.contains("MacPorts did not install x"))
+	}
+	
+	func testAFailedRemovalStopsOnlyItsOwnGroup() {
+		let backend = FakeBackend(installable: ["a", "b", "x"])
+		backend.failingRemovals = ["b"]
+		let result = HomebrewClient.executeSwitchBlocking(preview([["b", "a"], ["x"]]), backend: backend, onOutput: nil)
+		XCTAssertEqual(backend.removed, ["x"], "The group stops at b, the other group carries on")
+		XCTAssertEqual(result.status, 1)
+		XCTAssertTrue(result.output.contains("Stopped this group at b"))
+	}
+	
+	func testAFormulaAlreadyRemovedIsSkipped() {
+		let backend = FakeBackend(installable: ["a", "b"])
+		backend.alreadyGone = ["b"]
+		let result = HomebrewClient.executeSwitchBlocking(preview([["b", "a"]]), backend: backend, onOutput: nil)
+		XCTAssertEqual(backend.removed, ["a"])
+		XCTAssertEqual(result.status, 0)
+		XCTAssertTrue(result.output.contains("b: already removed"))
+	}
+	
+	func testStaleIndexIsRefreshedFirstAndInstallsAreOnlyPrebuilt() {
+		let names = (0..<250).map { "p\($0)" }
+		let backend = FakeBackend(installable: Set(names))
+		_ = HomebrewClient.executeSwitchBlocking(preview([names], outdatedIndex: ["p1"]), backend: backend, onOutput: nil)
+		XCTAssertEqual(backend.actions.first, .selfUpdate)
+		let installs = backend.actions.compactMap { action -> (ports: [String], binaryOnly: Bool)? in
+			if case .install(let ports, _, let binaryOnly) = action { return (ports, binaryOnly) }
+			return nil
+		}
+		XCTAssertEqual(installs.map(\.ports.count), [100, 100, 50])
+		XCTAssertTrue(installs.allSatisfy(\.binaryOnly), "A switch never compiles")
+		XCTAssertTrue(backend.actions.allSatisfy { $0.arguments != nil }, "Every action is one the helper accepts")
+	}
+	
+	func testNothingHappensWhenAToolIsMissing() {
+		let backend = FakeBackend(installable: ["a"])
+		backend.unavailableReason = "Homebrew is not installed."
+		let result = HomebrewClient.executeSwitchBlocking(preview([["a"]]), backend: backend, onOutput: nil)
+		XCTAssertEqual(result.status, -1)
+		XCTAssertTrue(backend.actions.isEmpty)
+		XCTAssertTrue(backend.removed.isEmpty)
+	}
+	
+	func testStreamsOutputWhileRunning() {
+		let backend = FakeBackend(installable: ["a"])
+		let box = ForwardedBox()
+		_ = HomebrewClient.executeSwitchBlocking(preview([["a"]]), backend: backend, onOutput: { box.add($0) })
+		XCTAssertTrue(box.items.joined().contains("port output"))
+		XCTAssertTrue(box.items.joined().contains("Removing a from Homebrew"))
 	}
 }
