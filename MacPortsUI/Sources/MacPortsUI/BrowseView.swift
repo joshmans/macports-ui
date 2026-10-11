@@ -38,7 +38,7 @@ struct BrowseView: View {
 		}
 		.task { await model.loadIfNeeded() }
 		.sheet(item: $model.installFlow) { flow in
-			InstallSheet(flow: flow, cancel: { model.cancelInstall() }, install: { source in Task { await model.install(flow, buildFromSource: source) } })
+			InstallSheet(flow: flow, cancel: { model.cancelInstall() }, install: { source in model.install(flow, buildFromSource: source) })
 		}
 	}
 	
@@ -86,7 +86,7 @@ struct BrowseView: View {
 				Text("Checking prebuilt availability…").foregroundStyle(.secondary)
 			}.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else if let detail = model.detail {
-			PortDetailView(detail: detail, installedVersion: model.installedVersions[detail.name], isInstalling: model.isInstalling) { _ in
+			PortDetailView(detail: detail, installedVersion: model.installedVersions[detail.name], isInstalling: model.isPending(detail.name)) { _ in
 				model.beginInstall()
 			}
 			.id(detail.name)

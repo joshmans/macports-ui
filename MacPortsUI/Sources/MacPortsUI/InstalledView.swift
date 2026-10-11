@@ -32,9 +32,9 @@ struct InstalledView: View {
 		.confirmationDialog(title, isPresented: Binding(get: { model.pending != nil }, set: { if !$0 { model.pending = nil } }), presenting: model.pending) { pending in
 			switch pending {
 			case .uninstall(let port):
-				Button("Uninstall \(port.name)", role: .destructive) { Task { await model.uninstall(port) } }
+				Button("Uninstall \(port.name)", role: .destructive) { model.uninstall(port) }
 			case .removeInactive:
-				Button("Remove Inactive Versions", role: .destructive) { Task { await model.removeInactive() } }
+				Button("Remove Inactive Versions", role: .destructive) { model.removeInactive() }
 			case .blocked:
 				Button("OK", role: .cancel) {}
 			}
@@ -87,11 +87,11 @@ struct InstalledView: View {
 			Text(summary).foregroundStyle(.secondary)
 			Spacer()
 			Button("Remove Inactive Versions…") { model.pending = .removeInactive }
-				.disabled(model.isBusy || model.inactiveCount == 0)
+				.disabled(model.isBusy || model.isRemovingInactive || model.inactiveCount == 0)
 			Button("Uninstall…") {
 				if let port = model.selectedPort { Task { await model.requestUninstall(port) } }
 			}
-			.disabled(model.isBusy || model.selectedPort == nil)
+			.disabled(model.isBusy || model.selectedPort.map(model.isPending) ?? true)
 		}
 		.padding(10)
 	}

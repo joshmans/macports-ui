@@ -41,7 +41,9 @@ struct OutdatedView: View {
 					}
 				}
 				TableColumn("Archive") { port in
-					if port.isPrebuilt {
+					if model.activity.isPending(port.name) {
+						Label("Queued", systemImage: "clock").foregroundStyle(.secondary)
+					} else if port.isPrebuilt {
 						Label("Prebuilt", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
 					} else {
 						Label("Would compile", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -58,7 +60,7 @@ struct OutdatedView: View {
 			Image(systemName: "clock.badge.exclamationmark").foregroundStyle(.orange)
 			Text("The port index is more than two weeks old. Versions and archive availability may be wrong.")
 			Spacer()
-			Button("Refresh Index") { Task { await model.refreshIndex() } }.disabled(model.isBusy)
+			Button("Refresh Index") { model.refreshIndex() }.disabled(model.isRefreshingIndex)
 		}
 		.padding(10)
 		.background(.orange.opacity(0.12))
@@ -66,23 +68,20 @@ struct OutdatedView: View {
 	
 	private var footer: some View {
 		HStack {
-			switch model.phase {
-			case .checking: ProgressView().controlSize(.small); Text("Checking…")
-			case .working(let text): ProgressView().controlSize(.small); Text(text)
-			case .idle:
-				if let report = model.report {
-					Text("\(report.ports.count) outdated · \(model.prebuilt.count) prebuilt")
-					if let date = report.indexDate {
-						Text("· index \(date.formatted(.relative(presentation: .named)))")
-					}
+			if model.isChecking {
+				ProgressView().controlSize(.small); Text("Checking…")
+			} else if let report = model.report {
+				Text("\(report.ports.count) outdated · \(model.prebuiltCount) prebuilt")
+				if let date = report.indexDate {
+					Text("· index \(date.formatted(.relative(presentation: .named)))")
 				}
 			}
 			Spacer()
-			Button("Upgrade Selected") { Task { await model.upgrade(model.selectedPrebuilt) } }
-				.disabled(model.isBusy || model.selectedPrebuilt.isEmpty)
-			Button("Upgrade All Prebuilt") { Task { await model.upgrade(model.prebuilt) } }
+			Button("Upgrade Selected") { model.upgrade(model.selectedUpgradable) }
+				.disabled(model.selectedUpgradable.isEmpty)
+			Button("Upgrade All Prebuilt") { model.upgrade(model.upgradable) }
 				.buttonStyle(.borderedProminent)
-				.disabled(model.isBusy || model.prebuilt.isEmpty)
+				.disabled(model.upgradable.isEmpty)
 		}
 		.foregroundStyle(.secondary)
 		.padding(10)
@@ -91,12 +90,12 @@ struct OutdatedView: View {
 	@ToolbarContentBuilder private var toolbar: some ToolbarContent {
 		ToolbarItem {
 			Button { Task { await model.refresh() } } label: { Label("Check Again", systemImage: "arrow.clockwise") }
-				.disabled(model.isBusy || !model.portInstalled)
+				.disabled(model.isChecking || !model.portInstalled)
 		}
 		ToolbarItem {
-			Button { Task { await model.refreshIndex() } } label: { Label("Refresh Index", systemImage: "arrow.triangle.2.circlepath") }
+			Button { model.refreshIndex() } label: { Label("Refresh Index", systemImage: "arrow.triangle.2.circlepath") }
 				.help("Run port selfupdate")
-				.disabled(model.isBusy || !model.portInstalled)
+				.disabled(model.isChecking || !model.portInstalled)
 		}
 	}
 	

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import MacPortsKit
 
 @MainActor
@@ -10,7 +11,6 @@ final class BrowseModel: ObservableObject {
 	@Published private(set) var installedVersions = [String: String]()
 	@Published private(set) var detail: PortDetail?
 	@Published private(set) var detailIsLoading = false
-	@Published private(set) var isInstalling = false
 	@Published var installFlow: InstallFlowModel?
 	
 	@Published var search = "" { didSet { updateResults() } }
@@ -20,12 +20,14 @@ final class BrowseModel: ObservableObject {
 	let activity: ActivityModel
 	let portInstalled = PortsClient.isInstalled
 	private var detailTask: Task<Void, Never>?
+	private var observer: AnyCancellable?
 	
 	/// The most results shown at once; a search narrows them.
 	static let limit = 500
 	
 	init(activity: ActivityModel) {
 		self.activity = activity
+		observer = activity.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
 	}
 	
 	var hasQuery: Bool { !search.trimmingCharacters(in: .whitespaces).isEmpty || category != nil }
@@ -79,18 +81,18 @@ final class BrowseModel: ObservableObject {
 		installFlow = nil
 	}
 	
-	func install(_ flow: InstallFlowModel, buildFromSource: Bool) async {
-		guard !isInstalling else { return }
-		isInstalling = true
+	/// Whether the port has a queued or running action.
+	func isPending(_ name: String) -> Bool { activity.isPending(name) }
+	
+	func install(_ flow: InstallFlowModel, buildFromSource: Bool) {
 		let name = flow.detail.name
 		let arguments = flow.selection.arguments
 		flow.cancel()
 		installFlow = nil
-		// Let the install sheet go away before the log sheet comes up.
-		try? await Task.sleep(nanoseconds: 400_000_000)
-		await activity.run(success: "Installed \(name).") { await PortsClient.install(name, variants: arguments, buildFromSource: buildFromSource, onOutput: $0) }
-		await refreshInstalled()
-		isInstalling = false
+		let title = buildFromSource ? "Build \(name) from source" : "Install \(name)"
+		activity.enqueue(title: title, keys: [name], success: "Installed \(name).", onFinish: { [weak self] in await self?.refreshInstalled() }) {
+			await PortsClient.install(name, variants: arguments, buildFromSource: buildFromSource, onOutput: $0)
+		}
 	}
 	
 }

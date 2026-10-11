@@ -40,6 +40,11 @@ public struct ActionResult: Sendable {
 	public let status: Int32
 	public let output: String
 	public var succeeded: Bool { status == 0 }
+	
+	public init(status: Int32, output: String) {
+		self.status = status
+		self.output = output
+	}
 }
 
 /// The state of the optional privileged helper, which removes the administrator prompt.

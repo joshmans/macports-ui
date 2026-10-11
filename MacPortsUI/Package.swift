@@ -6,6 +6,7 @@ let package = Package(
 	platforms: [.macOS(.v13)],
 	dependencies: [.package(path: "../MacPortsKit")],
 	targets: [
-		.executableTarget(name: "MacPortsUI", dependencies: ["MacPortsKit"])
+		.executableTarget(name: "MacPortsUI", dependencies: ["MacPortsKit"]),
+		.testTarget(name: "MacPortsUITests", dependencies: ["MacPortsUI"])
 	]
 )

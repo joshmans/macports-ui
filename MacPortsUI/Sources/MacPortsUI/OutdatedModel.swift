@@ -1,56 +1,55 @@
 import Foundation
+import Combine
 import MacPortsKit
 
 @MainActor
 final class OutdatedModel: ObservableObject {
 	
-	enum Phase: Equatable {
-		case idle
-		case checking
-		case working(String)
-	}
-	
 	@Published private(set) var report: OutdatedReport?
-	@Published private(set) var phase = Phase.idle
+	@Published private(set) var isChecking = false
 	@Published var selection = Set<String>()
 	
 	let activity: ActivityModel
 	let portInstalled = PortsClient.isInstalled
+	private var observer: AnyCancellable?
 	
 	init(activity: ActivityModel) {
 		self.activity = activity
+		// The queue decides which buttons are enabled.
+		observer = activity.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
 	}
 	
 	var ports: [OutdatedPort] { report?.ports ?? [] }
-	var prebuilt: [OutdatedPort] { ports.filter(\.isPrebuilt) }
-	var isBusy: Bool { phase != .idle }
 	
-	/// Selected ports that can be upgraded without compiling.
-	var selectedPrebuilt: [OutdatedPort] { ports.filter { selection.contains($0.id) && $0.isPrebuilt } }
+	/// Ports that can be upgraded now: prebuilt and not already queued.
+	var upgradable: [OutdatedPort] { ports.filter { $0.isPrebuilt && !activity.isPending($0.name) } }
+	var selectedUpgradable: [OutdatedPort] { upgradable.filter { selection.contains($0.id) } }
+	var prebuiltCount: Int { ports.filter(\.isPrebuilt).count }
+	
+	var isRefreshingIndex: Bool { activity.isPending("@selfupdate") }
 	
 	func refresh() async {
-		guard portInstalled, !isBusy else { return }
-		phase = .checking
+		guard portInstalled, !isChecking else { return }
+		isChecking = true
 		let result = await PortsClient.fetchOutdated()
 		report = result
 		selection.formIntersection(Set(result.ports.map(\.id)))
-		phase = .idle
+		isChecking = false
 	}
 	
-	func upgrade(_ list: [OutdatedPort]) async {
-		guard !list.isEmpty, !isBusy else { return }
-		phase = .working(list.count == 1 ? "Upgrading \(list[0].name)…" : "Upgrading \(list.count) ports…")
-		await activity.run(success: "Upgrade finished.") { await PortsClient.upgrade(list.map(\.name), onOutput: $0) }
-		phase = .idle
-		await refresh()
+	func upgrade(_ list: [OutdatedPort]) {
+		let names = list.map(\.name)
+		guard !names.isEmpty else { return }
+		activity.enqueue(title: names.count == 1 ? "Upgrade \(names[0])" : "Upgrade \(names.count) ports (\(names.prefix(3).joined(separator: ", "))\(names.count > 3 ? ", …" : ""))",
+						 keys: Set(names), success: "Upgrade finished.", onFinish: { [weak self] in await self?.refresh() }) {
+			await PortsClient.upgrade(names, onOutput: $0)
+		}
 	}
 	
-	func refreshIndex() async {
-		guard !isBusy else { return }
-		phase = .working("Refreshing the port index…")
-		await activity.run(success: "Port index refreshed.") { await PortsClient.selfUpdate(onOutput: $0) }
-		phase = .idle
-		await refresh()
+	func refreshIndex() {
+		activity.enqueue(title: "Refresh port index", keys: ["@selfupdate"], success: "Port index refreshed.", onFinish: { [weak self] in await self?.refresh() }) {
+			await PortsClient.selfUpdate(onOutput: $0)
+		}
 	}
 	
 }

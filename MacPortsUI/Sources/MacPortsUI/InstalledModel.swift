@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import MacPortsKit
 
 @MainActor
@@ -36,9 +37,11 @@ final class InstalledModel: ObservableObject {
 	
 	let activity: ActivityModel
 	let portInstalled = PortsClient.isInstalled
+	private var observer: AnyCancellable?
 	
 	init(activity: ActivityModel) {
 		self.activity = activity
+		observer = activity.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
 	}
 	
 	var visible: [InstalledPort] {
@@ -74,20 +77,21 @@ final class InstalledModel: ObservableObject {
 		pending = dependents.isEmpty ? .uninstall(port) : .blocked(port, dependents: dependents)
 	}
 	
-	func uninstall(_ port: InstalledPort) async {
-		guard !isBusy else { return }
-		isBusy = true
-		await activity.run(success: "Uninstalled \(port.name).") { await PortsClient.uninstall(port.name, onOutput: $0) }
-		isBusy = false
-		await refresh()
+	func uninstall(_ port: InstalledPort) {
+		activity.enqueue(title: "Uninstall \(port.name)", keys: [port.name], success: "Uninstalled \(port.name).", onFinish: { [weak self] in await self?.refresh() }) {
+			await PortsClient.uninstall(port.name, onOutput: $0)
+		}
 	}
 	
-	func removeInactive() async {
-		guard !isBusy else { return }
-		isBusy = true
-		await activity.run(success: "Removed inactive versions.") { await PortsClient.uninstallInactive(onOutput: $0) }
-		isBusy = false
-		await refresh()
+	func removeInactive() {
+		activity.enqueue(title: "Remove inactive versions", keys: ["@uninstall-inactive"], success: "Removed inactive versions.", onFinish: { [weak self] in await self?.refresh() }) {
+			await PortsClient.uninstallInactive(onOutput: $0)
+		}
 	}
+	
+	/// Whether the port has a queued or running action.
+	func isPending(_ port: InstalledPort) -> Bool { activity.isPending(port.name) }
+	
+	var isRemovingInactive: Bool { activity.isPending("@uninstall-inactive") }
 	
 }

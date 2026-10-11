@@ -7,12 +7,14 @@ struct RootView: View {
 		case outdated = "Outdated"
 		case installed = "Installed"
 		case browse = "Browse"
+		case activity = "Activity"
 		var id: String { rawValue }
 		var symbol: String {
 			switch self {
 			case .outdated: return "arrow.down.circle"
 			case .installed: return "shippingbox"
 			case .browse: return "magnifyingglass"
+			case .activity: return "list.bullet.rectangle"
 			}
 		}
 	}
@@ -35,7 +37,7 @@ struct RootView: View {
 	var body: some View {
 		NavigationSplitView {
 			List(Section.allCases, selection: $section) { section in
-				Label(section.rawValue, systemImage: section.symbol).tag(section)
+				row(for: section)
 			}
 			.navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 220)
 		} detail: {
@@ -44,8 +46,10 @@ struct RootView: View {
 			case .outdated: OutdatedView(model: outdated)
 			case .installed: InstalledView(model: installed)
 			case .browse: BrowseView(model: browse)
+			case .activity: ActivityView(activity: activity)
 			}
 		}
+		.overlay(alignment: .bottom) { notice }
 		.toolbar {
 			ToolbarItem(placement: .primaryAction) {
 				Button { showingHelper = true } label: { Label("Helper", systemImage: "gearshape") }
@@ -62,38 +66,37 @@ struct RootView: View {
 				HStack { Spacer(); Button("Done") { showingHelper = false }.keyboardShortcut(.defaultAction) }.padding([.horizontal, .bottom])
 			}
 		}
-		.sheet(isPresented: Binding(get: { activity.log != nil }, set: { if !$0 { activity.log = nil } })) { ActivitySheet(activity: activity) }
 	}
 	
-}
-
-struct ActivitySheet: View {
-	
-	@ObservedObject var activity: ActivityModel
-	
-	var body: some View {
-		VStack(alignment: .leading, spacing: 12) {
-			if activity.isLive {
-				HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Working…").font(.headline) }
+	@ViewBuilder private func row(for section: Section) -> some View {
+		let label = Label(section.rawValue, systemImage: section.symbol).tag(section)
+		if section == .activity {
+			if activity.activeCount > 0 {
+				label.badge(activity.activeCount)
+			} else if activity.unseenFailures > 0 {
+				label.badge(Text("!"))
 			} else {
-				Label(activity.failed ? "Something went wrong" : "Done", systemImage: activity.failed ? "xmark.octagon.fill" : "checkmark.circle.fill")
-					.font(.headline).foregroundStyle(activity.failed ? .red : .green)
+				label
 			}
-			ScrollViewReader { proxy in
-				ScrollView {
-					VStack(alignment: .leading, spacing: 0) {
-						Text(activity.log ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-						Color.clear.frame(height: 1).id("end")
-					}
-				}
-				.onChange(of: activity.log) { _ in proxy.scrollTo("end") }
-			}
-			.padding(8).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 6))
-			HStack { Spacer(); Button("Close") { activity.log = nil }.keyboardShortcut(.defaultAction).disabled(activity.isLive) }
+		} else {
+			label
 		}
-		.padding()
-		.frame(width: 620, height: 400)
-		.interactiveDismissDisabled(activity.isLive)
+	}
+	
+	/// A short message when something was queued, with a way to see it.
+	@ViewBuilder private var notice: some View {
+		if let text = activity.notice, section != .activity {
+			HStack(spacing: 10) {
+				Image(systemName: "list.bullet.rectangle")
+				Text(text).lineLimit(1)
+				Button("Show") { section = .activity; activity.dismissNotice() }.buttonStyle(.link)
+			}
+			.padding(.horizontal, 14).padding(.vertical, 9)
+			.background(.regularMaterial, in: Capsule())
+			.shadow(radius: 4, y: 1)
+			.padding(.bottom, 16)
+			.transition(.move(edge: .bottom).combined(with: .opacity))
+		}
 	}
 	
 }
