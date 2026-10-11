@@ -26,7 +26,7 @@ struct InstallSheet: View {
 			Divider()
 			footer
 		}
-		.frame(width: 540, height: 560)
+		.frame(width: 540, height: 420)
 		.task { flow.refreshPlan() }
 		.confirmationDialog("Compile from source?", isPresented: $confirmingSource) {
 			Button("Build from Source") { install(true) }
