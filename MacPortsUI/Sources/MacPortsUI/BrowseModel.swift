@@ -11,6 +11,7 @@ final class BrowseModel: ObservableObject {
 	@Published private(set) var detail: PortDetail?
 	@Published private(set) var detailIsLoading = false
 	@Published private(set) var isInstalling = false
+	@Published var installFlow: InstallFlowModel?
 	
 	@Published var search = "" { didSet { updateResults() } }
 	@Published var category: String? { didSet { updateResults() } }
@@ -67,10 +68,27 @@ final class BrowseModel: ObservableObject {
 		}
 	}
 	
-	func install(_ name: String) async {
+	/// Opens the install sheet for the selected port.
+	func beginInstall() {
+		guard let detail, installedVersions[detail.name] == nil else { return }
+		installFlow = InstallFlowModel(detail: detail)
+	}
+	
+	func cancelInstall() {
+		installFlow?.cancel()
+		installFlow = nil
+	}
+	
+	func install(_ flow: InstallFlowModel, buildFromSource: Bool) async {
 		guard !isInstalling else { return }
 		isInstalling = true
-		await activity.run(success: "Installed \(name).") { await PortsClient.install(name, onOutput: $0) }
+		let name = flow.detail.name
+		let arguments = flow.selection.arguments
+		flow.cancel()
+		installFlow = nil
+		// Let the install sheet go away before the log sheet comes up.
+		try? await Task.sleep(nanoseconds: 400_000_000)
+		await activity.run(success: "Installed \(name).") { await PortsClient.install(name, variants: arguments, buildFromSource: buildFromSource, onOutput: $0) }
 		await refreshInstalled()
 		isInstalling = false
 	}

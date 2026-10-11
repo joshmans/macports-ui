@@ -37,6 +37,9 @@ struct BrowseView: View {
 			}
 		}
 		.task { await model.loadIfNeeded() }
+		.sheet(item: $model.installFlow) { flow in
+			InstallSheet(flow: flow, cancel: { model.cancelInstall() }, install: { source in Task { await model.install(flow, buildFromSource: source) } })
+		}
 	}
 	
 	// MARK: Results
@@ -83,8 +86,8 @@ struct BrowseView: View {
 				Text("Checking prebuilt availability…").foregroundStyle(.secondary)
 			}.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else if let detail = model.detail {
-			PortDetailView(detail: detail, installedVersion: model.installedVersions[detail.name], isInstalling: model.isInstalling) { name in
-				Task { await model.install(name) }
+			PortDetailView(detail: detail, installedVersion: model.installedVersions[detail.name], isInstalling: model.isInstalling) { _ in
+				model.beginInstall()
 			}
 			.id(detail.name)
 		} else {
@@ -115,10 +118,10 @@ struct PortDetailView: View {
 				if let installedVersion {
 					Label("Installed: \(installedVersion)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
 				} else {
-					Button { install(detail.name) } label: { Label("Install Prebuilt", systemImage: "arrow.down.circle") }
+					Button { install(detail.name) } label: { Label("Install…", systemImage: "arrow.down.circle") }
 						.buttonStyle(.borderedProminent)
-						.disabled(isInstalling || !canInstall)
-						.help(canInstall ? "Installs from prebuilt archives only. It fails instead of compiling." : "No prebuilt archive for this Mac, so installing would compile.")
+						.disabled(isInstalling)
+						.help("Choose variants and see what the install needs")
 				}
 				
 				if !detail.longDescription.isEmpty {
@@ -154,11 +157,6 @@ struct PortDetailView: View {
 			.frame(maxWidth: .infinity, alignment: .leading)
 			.padding()
 		}
-	}
-	
-	private var canInstall: Bool {
-		if case .available = detail.prebuilt { return true }
-		return false
 	}
 	
 	@ViewBuilder private var prebuiltRow: some View {

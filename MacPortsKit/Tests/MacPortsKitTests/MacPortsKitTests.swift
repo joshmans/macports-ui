@@ -261,6 +261,67 @@ final class MacPortsKitTests: XCTestCase {
 		XCTAssertEqual(Catalog.categories(in: ports).first?.name, "net")
 	}
 	
+	private let wgetVariants = [
+		PortVariant(name: "gnutls", description: "", isDefault: true, conflicts: ["ssl"]),
+		PortVariant(name: "metalink", description: "", isDefault: false, conflicts: []),
+		PortVariant(name: "ssl", description: "", isDefault: false, conflicts: ["gnutls"]),
+		PortVariant(name: "universal", description: "", isDefault: false, conflicts: [])
+	]
+	
+	func testVariantSelectionStartsAtDefaults() {
+		let selection = VariantSelection(variants: wgetVariants)
+		XCTAssertTrue(selection.isDefault)
+		XCTAssertEqual(selection.arguments, [])
+		XCTAssertEqual(selection.archiveSuffix, "+gnutls")
+	}
+	
+	func testEnablingAVariantTurnsOffItsConflicts() {
+		var selection = VariantSelection(variants: wgetVariants)
+		selection.set("ssl", enabled: true)
+		XCTAssertFalse(selection.isEnabled("gnutls"))
+		XCTAssertEqual(selection.arguments, ["-gnutls", "+ssl"])
+		XCTAssertEqual(selection.archiveSuffix, "+ssl")
+		selection.set("metalink", enabled: true)
+		XCTAssertEqual(selection.archiveSuffix, "+metalink+ssl", "Archive names list variants alphabetically")
+		selection.set("gnutls", enabled: true)
+		XCTAssertFalse(selection.isEnabled("ssl"), "Conflicts work in both directions")
+	}
+	
+	func testVariantArgumentsAreAlwaysValidForTheHelper() {
+		var selection = VariantSelection(variants: wgetVariants)
+		selection.set("ssl", enabled: true)
+		selection.set("universal", enabled: true)
+		XCTAssertNotNil(PortAction.install(ports: ["wget"], variants: selection.arguments, binaryOnly: true).arguments)
+		selection.set("nonexistent", enabled: true)
+		XCTAssertFalse(selection.isEnabled("nonexistent"))
+	}
+	
+	func testParsesDependencyTree() {
+		let output = "The following ports are dependencies of wget @1.25.0_1:\n  gettext-runtime\n    libiconv\n  libidn2\n    libiconv\n  zlib"
+		XCTAssertEqual(MacPortsParser.parseDependencyTree(output), ["gettext-runtime", "libiconv", "libidn2", "zlib"])
+	}
+	
+	func testParsesDirectDependencies() {
+		let output = "Full Name: wget @1.25.0_1+ssl\nExtract Dependencies: lzip\nBuild Dependencies:   gettext, perl5.34\nLibrary Dependencies: gettext-runtime, zlib, openssl3\nRuntime Dependencies: ca-certs\nTest Dependencies:    p5.34-io-socket-ssl"
+		XCTAssertEqual(MacPortsParser.parseDirectDependencies(output), ["gettext-runtime", "zlib", "openssl3", "ca-certs"])
+	}
+	
+	func testParsesInfoBlocks() {
+		let blocks = MacPortsParser.parseInfoBlocks("name: a\nversion: 1\nrevision: 0\n--\nname: b\nversion: 2\nrevision: 1")
+		XCTAssertEqual(blocks.map { $0["name"] }, ["a", "b"])
+		XCTAssertEqual(blocks[1]["revision"], "1")
+	}
+	
+	func testInstallPlanKnowsWhatWouldCompile() {
+		let missing = [PlannedDependency(name: "a", version: "1_0", isPrebuilt: true), PlannedDependency(name: "b", version: "1_0", isPrebuilt: false)]
+		let plan = InstallPlan(port: "x", prebuilt: .available(version: "1_0"), missingDependencies: missing, installedDependencies: 3)
+		XCTAssertEqual(plan.wouldCompile, ["b"])
+		XCTAssertFalse(plan.canInstallPrebuilt)
+		let good = InstallPlan(port: "x", prebuilt: .available(version: "1_0"), missingDependencies: [missing[0]], installedDependencies: 3)
+		XCTAssertTrue(good.canInstallPrebuilt)
+		XCTAssertEqual(InstallPlan(port: "x", prebuilt: .unavailable, missingDependencies: [], installedDependencies: 0).wouldCompile, ["x"])
+	}
+	
 	func testSplitsBatchedOutputIntoPerStepResults() {
 		let output = "Selfupdate ok\n@@PORT-EXIT:0\nInstalling\nfailed\n@@PORT-EXIT:1\n"
 		let results = PromptingPortRunner.splitResults(output, expected: 2, fallbackStatus: 0)
