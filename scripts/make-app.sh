@@ -17,6 +17,8 @@ IDENTITY="${SIGN_IDENTITY:--}"
 APP_ID="com.otstechs.macportsui"
 HELPER_ID="$APP_ID.helper"
 APP="build/MacPorts UI.app"
+VERSION="0.9"   # 0.9 = release candidate; becomes 1.0 after testing and bugfixes
+BUILD="1"
 
 echo "==> Building ($CONFIG)"
 swift build --package-path MacPortsUI -c "$CONFIG"
@@ -25,6 +27,15 @@ BIN="$(swift build --package-path MacPortsUI -c "$CONFIG" --show-bin-path)"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN/MacPortsUI" "$APP/Contents/MacOS/MacPortsUI"
+echo "==> Rendering app icon"
+mkdir -p "$APP/Contents/Resources" build/AppIcon.iconset
+swift scripts/make-icon.swift build/icon-1024.png
+for SZ in 16 32 128 256 512; do
+	sips -z $SZ $SZ build/icon-1024.png --out "build/AppIcon.iconset/icon_${SZ}x${SZ}.png" >/dev/null
+	sips -z $((SZ*2)) $((SZ*2)) build/icon-1024.png --out "build/AppIcon.iconset/icon_${SZ}x${SZ}@2x.png" >/dev/null
+done
+iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
+rm -rf build/AppIcon.iconset build/icon-1024.png
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -32,10 +43,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 	<key>CFBundleIdentifier</key><string>$APP_ID</string>
 	<key>CFBundleName</key><string>MacPorts UI</string>
 	<key>CFBundleDisplayName</key><string>MacPorts UI</string>
+	<key>CFBundleIconFile</key><string>AppIcon</string>
 	<key>CFBundleExecutable</key><string>MacPortsUI</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
-	<key>CFBundleShortVersionString</key><string>0.1</string>
-	<key>CFBundleVersion</key><string>1</string>
+	<key>CFBundleShortVersionString</key><string>$VERSION</string>
+	<key>CFBundleVersion</key><string>$BUILD</string>
 	<key>LSMinimumSystemVersion</key><string>13.0</string>
 	<key>NSHighResolutionCapable</key><true/>
 </dict></plist>
