@@ -2,7 +2,7 @@
 //  PortAction.swift
 //  MacPortsKit
 //
-//  This file is compiled into both the app and the privileged helper. It must only depend on Foundation.
+//  Shared by the app and the privileged helper. It must only depend on Foundation.
 //
 
 import Foundation
@@ -10,7 +10,7 @@ import Foundation
 /// The only things that may ever be run as root through the `port` command.
 ///
 /// Both the prompting fallback and the privileged helper accept nothing but these shapes. The helper re-validates every request it receives with `init(arguments:)`, so a compromised or buggy client cannot make it run anything else.
-enum PortAction: Equatable {
+public enum PortAction: Equatable {
 	
 	/// Refreshes the port index.
 	case selfUpdate
@@ -28,15 +28,15 @@ enum PortAction: Equatable {
 	// MARK: - Validation
 	
 	/// The largest number of ports in a single action.
-	static let maximumPorts = 200
+	public static let maximumPorts = 200
 	
 	/// Whether a name is safe to pass to the `port` command.
-	static func isValidPortName(_ name: String) -> Bool {
+	public static func isValidPortName(_ name: String) -> Bool {
 		name.count <= 100 && name.range(of: "^[A-Za-z0-9][A-Za-z0-9._+-]*$", options: .regularExpression) != nil
 	}
 	
 	/// Whether a string is a single variant such as `+x11` or `-quartz`.
-	static func isValidVariant(_ variant: String) -> Bool {
+	public static func isValidVariant(_ variant: String) -> Bool {
 		variant.count <= 60 && variant.range(of: "^[+-][A-Za-z0-9_]+$", options: .regularExpression) != nil
 	}
 	
@@ -44,7 +44,7 @@ enum PortAction: Equatable {
 	// MARK: - Arguments
 	
 	/// The arguments for the `port` command, or `nil` if the action is not valid.
-	var arguments: [String]? {
+	public var arguments: [String]? {
 		switch self {
 		case .selfUpdate:
 			return ["-N", "selfupdate"]
@@ -70,7 +70,7 @@ enum PortAction: Equatable {
 	}
 	
 	/// Parses an argument vector back into an action. Returns `nil` for anything that is not exactly one of the allowed shapes.
-	init?(arguments: [String]) {
+	public init?(arguments: [String]) {
 		var rest = arguments[...]
 		guard rest.first == "-N" else { return nil }
 		rest = rest.dropFirst()

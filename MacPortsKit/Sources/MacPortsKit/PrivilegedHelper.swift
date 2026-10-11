@@ -6,11 +6,12 @@
 import Foundation
 import ServiceManagement
 import Security
+@_exported import PortHelperShared
 
 /// Manages the optional privileged helper that lets the app run MacPorts changes without asking for the administrator password each time.
 ///
 /// The helper is a launch daemon embedded in the app. The user approves it once in System Settings > General > Login Items & Extensions.
-/// It only exists in builds signed with a developer team (see `the release script`); everything else falls back to the password prompt.
+/// It only exists in builds signed with a developer team (see scripts/make-app.sh); everything else falls back to the password prompt.
 enum PrivilegedHelper {
 	
 	enum Status: Equatable {
@@ -37,17 +38,7 @@ enum PrivilegedHelper {
 	
 	// MARK: - Status
 	
-	/// The team identifier this app was signed with, if any.
-	static var ownTeamIdentifier: String? {
-		var code: SecCode?
-		var staticCode: SecStaticCode?
-		var information: CFDictionary?
-		guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
-			  SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
-			  SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
-			  let dictionary = information as? [String: Any] else { return nil }
-		return dictionary[kSecCodeInfoTeamIdentifier as String] as? String
-	}
+	static var ownTeamIdentifier: String? { CodeSigning.ownTeamIdentifier }
 	
 	static var status: Status {
 		guard #available(macOS 13.0, *) else {

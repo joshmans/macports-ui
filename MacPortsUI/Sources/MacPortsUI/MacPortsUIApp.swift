@@ -7,5 +7,6 @@ struct MacPortsUIApp: App {
 			OutdatedView()
 				.frame(minWidth: 620, minHeight: 400)
 		}
+		Settings { HelperSettingsView() }
 	}
 }

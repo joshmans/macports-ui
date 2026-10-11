@@ -42,7 +42,40 @@ public struct ActionResult: Sendable {
 	public var succeeded: Bool { status == 0 }
 }
 
+/// The state of the optional privileged helper, which removes the administrator prompt.
+public enum HelperState: Equatable, Sendable {
+	case unavailable(reason: String)
+	case notRegistered
+	case requiresApproval
+	case enabled
+}
+
 public enum PortsClient {
+	
+	// MARK: - Privileged helper
+	
+	public static var helperState: HelperState {
+		switch PrivilegedHelper.status {
+		case .unavailable(let reason): return .unavailable(reason: reason)
+		case .notRegistered: return .notRegistered
+		case .requiresApproval: return .requiresApproval
+		case .enabled: return .enabled
+		}
+	}
+	
+	/// Whether the user has turned the helper on.
+	public static var helperIsOptedIn: Bool { PrivilegedHelper.isOptedIn }
+	
+	/// Registers the helper. Afterwards `helperState` may be `.requiresApproval`.
+	public static func enableHelper() throws { try PrivilegedHelper.enable() }
+	
+	public static func disableHelper() { PrivilegedHelper.disable() }
+	
+	public static func openLoginItemsSettings() { PrivilegedHelper.openSystemSettings() }
+	
+	
+	// MARK: - Ports
+	
 	
 	public static var isInstalled: Bool { MacPortsPackageChecker.isInstalled }
 	
