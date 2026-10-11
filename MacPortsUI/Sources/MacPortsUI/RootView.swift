@@ -6,13 +6,21 @@ struct RootView: View {
 	enum Section: String, CaseIterable, Identifiable {
 		case outdated = "Outdated"
 		case installed = "Installed"
+		case browse = "Browse"
 		var id: String { rawValue }
-		var symbol: String { self == .outdated ? "arrow.down.circle" : "shippingbox" }
+		var symbol: String {
+			switch self {
+			case .outdated: return "arrow.down.circle"
+			case .installed: return "shippingbox"
+			case .browse: return "magnifyingglass"
+			}
+		}
 	}
 	
 	@StateObject private var activity: ActivityModel
 	@StateObject private var outdated: OutdatedModel
 	@StateObject private var installed: InstalledModel
+	@StateObject private var browse: BrowseModel
 	@State private var section: Section? = .outdated
 	@State private var showingHelper = false
 	
@@ -21,6 +29,7 @@ struct RootView: View {
 		_activity = StateObject(wrappedValue: activity)
 		_outdated = StateObject(wrappedValue: OutdatedModel(activity: activity))
 		_installed = StateObject(wrappedValue: InstalledModel(activity: activity))
+		_browse = StateObject(wrappedValue: BrowseModel(activity: activity))
 	}
 	
 	var body: some View {
@@ -34,6 +43,7 @@ struct RootView: View {
 			switch section ?? .outdated {
 			case .outdated: OutdatedView(model: outdated)
 			case .installed: InstalledView(model: installed)
+			case .browse: BrowseView(model: browse)
 			}
 		}
 		.toolbar {
@@ -41,6 +51,10 @@ struct RootView: View {
 				Button { showingHelper = true } label: { Label("Helper", systemImage: "gearshape") }
 					.help("Privileged helper: change ports without a password prompt")
 			}
+		}
+		.onChange(of: section) { newValue in
+			// Installing or uninstalling elsewhere changes what is installed.
+			if newValue == .installed, installed.ports != nil { Task { await installed.refresh() } }
 		}
 		.sheet(isPresented: $showingHelper) {
 			VStack(spacing: 0) {

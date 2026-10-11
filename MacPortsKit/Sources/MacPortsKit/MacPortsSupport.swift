@@ -143,9 +143,9 @@ enum MacPortsPackageChecker {
 	}
 	
 	/// Installs ports. By default only prebuilt archives are used (`-b`); `buildFromSource` allows compiling.
-	static func install(_ names: [String], variants: String = "", buildFromSource: Bool = false) -> CommandRunner.Result {
+	static func install(_ names: [String], variants: String = "", buildFromSource: Bool = false, onOutput: ((String) -> Void)? = nil) -> CommandRunner.Result {
 		guard MacPortsParser.isValidVariantSelection(variants) else { return .init(status: -1, output: "Invalid variants.") }
-		return run(.install(ports: names, variants: variants.split(separator: " ").map(String.init), binaryOnly: !buildFromSource))
+		return run(.install(ports: names, variants: variants.split(separator: " ").map(String.init), binaryOnly: !buildFromSource), onOutput: onOutput)
 	}
 	
 	static func uninstall(_ name: String) -> CommandRunner.Result {

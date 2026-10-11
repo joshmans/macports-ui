@@ -229,6 +229,38 @@ final class MacPortsKitTests: XCTestCase {
 		XCTAssertEqual(MacPortsParser.parseDependents("Port bash has no dependents!"), [])
 	}
 	
+	func testParsesVariants() {
+		let output = """
+		wget has the variants:
+		[+]gnutls: SSL support via GnuTLS
+		     * conflicts with ssl
+		   metalink: Metalink support
+		   ssl: SSL support via OpenSSL
+		     * conflicts with gnutls
+		   universal: Build for multiple architectures
+		"""
+		let variants = MacPortsParser.parseVariants(output)
+		XCTAssertEqual(variants.map(\.name), ["gnutls", "metalink", "ssl", "universal"])
+		XCTAssertEqual(variants.filter(\.isDefault).map(\.name), ["gnutls"])
+		XCTAssertEqual(variants[0].conflicts, ["ssl"])
+		XCTAssertEqual(variants[0].description, "SSL support via GnuTLS")
+		XCTAssertTrue(MacPortsParser.parseVariants("Port nosuch not found").isEmpty)
+	}
+	
+	func testSearchRanksNameMatchesFirst() {
+		let ports = [
+			CatalogPort(name: "gdown", version: "1", categories: ["net"], summary: "Downloader when Curl/Wget fails"),
+			CatalogPort(name: "wget2", version: "1", categories: ["net"], summary: "successor"),
+			CatalogPort(name: "libwget", version: "1", categories: ["devel"], summary: "library"),
+			CatalogPort(name: "wget", version: "1", categories: ["net", "www"], summary: "retriever")
+		]
+		XCTAssertEqual(Catalog.search("wget", in: ports).map(\.name), ["wget", "wget2", "libwget", "gdown"])
+		XCTAssertEqual(Catalog.search("WGET", in: ports, category: "devel").map(\.name), ["libwget"])
+		XCTAssertEqual(Catalog.search("", in: ports, category: "www").map(\.name), ["wget"])
+		XCTAssertEqual(Catalog.search("wget", in: ports, limit: 2).count, 2)
+		XCTAssertEqual(Catalog.categories(in: ports).first?.name, "net")
+	}
+	
 	func testSplitsBatchedOutputIntoPerStepResults() {
 		let output = "Selfupdate ok\n@@PORT-EXIT:0\nInstalling\nfailed\n@@PORT-EXIT:1\n"
 		let results = PromptingPortRunner.splitResults(output, expected: 2, fallbackStatus: 0)
