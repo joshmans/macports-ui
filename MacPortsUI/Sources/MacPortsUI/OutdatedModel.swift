@@ -13,11 +13,13 @@ final class OutdatedModel: ObservableObject {
 	@Published private(set) var report: OutdatedReport?
 	@Published private(set) var phase = Phase.idle
 	@Published var selection = Set<String>()
-	@Published var log: String?
-	@Published private(set) var logIsLive = false
-	@Published var logFailed = false
 	
+	let activity: ActivityModel
 	let portInstalled = PortsClient.isInstalled
+	
+	init(activity: ActivityModel) {
+		self.activity = activity
+	}
 	
 	var ports: [OutdatedPort] { report?.ports ?? [] }
 	var prebuilt: [OutdatedPort] { ports.filter(\.isPrebuilt) }
@@ -38,9 +40,7 @@ final class OutdatedModel: ObservableObject {
 	func upgrade(_ list: [OutdatedPort]) async {
 		guard !list.isEmpty, !isBusy else { return }
 		phase = .working(list.count == 1 ? "Upgrading \(list[0].name)…" : "Upgrading \(list.count) ports…")
-		startLog()
-		let result = await PortsClient.upgrade(list.map(\.name), onOutput: appender())
-		show(result, success: "Upgrade finished.")
+		await activity.run(success: "Upgrade finished.") { await PortsClient.upgrade(list.map(\.name), onOutput: $0) }
 		phase = .idle
 		await refresh()
 	}
@@ -48,36 +48,9 @@ final class OutdatedModel: ObservableObject {
 	func refreshIndex() async {
 		guard !isBusy else { return }
 		phase = .working("Refreshing the port index…")
-		startLog()
-		let result = await PortsClient.selfUpdate(onOutput: appender())
-		show(result, success: "Port index refreshed.")
+		await activity.run(success: "Port index refreshed.") { await PortsClient.selfUpdate(onOutput: $0) }
 		phase = .idle
 		await refresh()
-	}
-	
-	/// Opens the log sheet so output can be shown while the command runs.
-	private func startLog() {
-		log = ""
-		logFailed = false
-		logIsLive = true
-	}
-	
-	private func appender() -> @Sendable (String) -> Void {
-		{ [weak self] text in
-			Task { @MainActor in self?.log?.append(text) }
-		}
-	}
-	
-	private func show(_ result: ActionResult, success: String) {
-		logIsLive = false
-		logFailed = !result.succeeded
-		let streamed = (log ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-		if result.succeeded {
-			log = streamed.isEmpty ? success : streamed
-		} else {
-			let text = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-			log = streamed.isEmpty ? (text.isEmpty ? "The command failed (exit \(result.status))." : text) : streamed
-		}
 	}
 	
 }

@@ -3,8 +3,7 @@ import MacPortsKit
 
 struct OutdatedView: View {
 	
-	@StateObject private var model = OutdatedModel()
-	@State private var showingHelper = false
+	@ObservedObject var model: OutdatedModel
 	
 	var body: some View {
 		VStack(spacing: 0) {
@@ -19,13 +18,6 @@ struct OutdatedView: View {
 		}
 		.toolbar { toolbar }
 		.task { await model.refresh() }
-		.sheet(isPresented: $showingHelper) {
-			VStack(spacing: 0) {
-				HelperSettingsView()
-				HStack { Spacer(); Button("Done") { showingHelper = false }.keyboardShortcut(.defaultAction) }.padding([.horizontal, .bottom])
-			}
-		}
-		.sheet(isPresented: Binding(get: { model.log != nil }, set: { if !$0 { model.log = nil } })) { logSheet }
 	}
 	
 	// MARK: Pieces
@@ -98,10 +90,6 @@ struct OutdatedView: View {
 	
 	@ToolbarContentBuilder private var toolbar: some ToolbarContent {
 		ToolbarItem {
-			Button { showingHelper = true } label: { Label("Helper", systemImage: "gearshape") }
-				.help("Privileged helper: upgrade without a password prompt")
-		}
-		ToolbarItem {
 			Button { Task { await model.refresh() } } label: { Label("Check Again", systemImage: "arrow.clockwise") }
 				.disabled(model.isBusy || !model.portInstalled)
 		}
@@ -110,31 +98,6 @@ struct OutdatedView: View {
 				.help("Run port selfupdate")
 				.disabled(model.isBusy || !model.portInstalled)
 		}
-	}
-	
-	private var logSheet: some View {
-		VStack(alignment: .leading, spacing: 12) {
-			if model.logIsLive {
-				HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Working…").font(.headline) }
-			} else {
-				Label(model.logFailed ? "Something went wrong" : "Done", systemImage: model.logFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
-					.font(.headline).foregroundStyle(model.logFailed ? .red : .green)
-			}
-			ScrollViewReader { proxy in
-				ScrollView {
-					VStack(alignment: .leading, spacing: 0) {
-						Text(model.log ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
-						Color.clear.frame(height: 1).id("end")
-					}
-				}
-				.onChange(of: model.log) { _ in proxy.scrollTo("end") }
-			}
-			.padding(8).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 6))
-			HStack { Spacer(); Button("Close") { model.log = nil }.keyboardShortcut(.defaultAction).disabled(model.logIsLive) }
-		}
-		.padding()
-		.frame(width: 620, height: 400)
-		.interactiveDismissDisabled(model.logIsLive)
 	}
 	
 }

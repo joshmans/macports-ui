@@ -133,3 +133,94 @@ public enum PortsClient {
 	
 }
 
+
+// MARK: - Installed ports
+
+/// An installed port, with what the Installed screen needs to know about it.
+public struct InstalledPort: Identifiable, Hashable, Sendable {
+	public var id: String { name }
+	public let name: String
+	
+	/// The active version, or the newest one if none is active.
+	public let version: String
+	
+	/// The variants of that version, such as `+quartz+x11`.
+	public let variants: String
+	
+	/// Whether the user asked for this port, as opposed to it being installed as a dependency.
+	public let isRequested: Bool
+	
+	/// Whether no other installed port depends on it.
+	public let isLeaf: Bool
+	
+	/// Whether any version of the port is active.
+	public let isActive: Bool
+	
+	/// Older versions that are installed but not active.
+	public let inactiveVersions: [String]
+}
+
+extension MacPortsParser {
+	
+	/// Groups `port installed` entries into one `InstalledPort` per name.
+	static func installedPorts(all: [(name: String, version: String, isActive: Bool)], requested: Set<String>, leaves: Set<String>) -> [InstalledPort] {
+		Dictionary(grouping: all, by: \.name).map { name, entries in
+			let current = entries.first(where: \.isActive) ?? entries.last!
+			let full = current.version
+			let variants = full.firstIndex(of: "+").map { String(full[$0...]) } ?? ""
+			return InstalledPort(name: name, version: String(full.prefix { $0 != "+" }), variants: variants,
+								 isRequested: requested.contains(name), isLeaf: leaves.contains(name), isActive: current.isActive,
+								 inactiveVersions: entries.filter { !$0.isActive && $0.version != full }.map(\.version))
+		}.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+	}
+	
+	/// Parses `port dependents NAME` output (`foo depends on NAME`).
+	static func parseDependents(_ output: String) -> [String] {
+		output.split(separator: "\n").compactMap { line in
+			guard !line.hasPrefix("Warning:"), let range = line.range(of: " depends on ") else { return nil }
+			let name = String(line[..<range.lowerBound])
+			return isValidPortName(name) ? name : nil
+		}
+	}
+	
+}
+
+extension PortsClient {
+	
+	/// Lists installed ports.
+	public static func fetchInstalled() async -> [InstalledPort] {
+		await Task.detached(priority: .userInitiated) {
+			guard isInstalled else { return [] }
+			let port = MacPortsPackageChecker.portPath
+			let all = MacPortsParser.parseInstalled(CommandRunner.run(port, ["installed"]).output)
+			let requested = Set(MacPortsParser.parseInstalled(CommandRunner.run(port, ["installed", "requested"]).output).map(\.name))
+			let leaves = Set(MacPortsParser.parseInstalled(CommandRunner.run(port, ["echo", "leaves"]).output).map(\.name))
+			return MacPortsParser.installedPorts(all: all, requested: requested, leaves: leaves)
+		}.value
+	}
+	
+	/// The installed ports that depend on the given port.
+	public static func dependents(of name: String) async -> [String] {
+		guard PortAction.isValidPortName(name) else { return [] }
+		return await Task.detached {
+			MacPortsParser.parseDependents(CommandRunner.run(MacPortsPackageChecker.portPath, ["dependents", name]).output)
+		}.value
+	}
+	
+	/// Uninstalls a port. MacPorts refuses if other ports depend on it, and that is never overridden.
+	public static func uninstall(_ name: String, onOutput: (@Sendable (String) -> Void)? = nil) async -> ActionResult {
+		await Task.detached {
+			let result = MacPortsPackageChecker.run(.uninstall(port: name), onOutput: onOutput)
+			return ActionResult(status: result.status, output: result.output)
+		}.value
+	}
+	
+	/// Removes all inactive versions of all ports.
+	public static func uninstallInactive(onOutput: (@Sendable (String) -> Void)? = nil) async -> ActionResult {
+		await Task.detached {
+			let result = MacPortsPackageChecker.run(.uninstallInactive, onOutput: onOutput)
+			return ActionResult(status: result.status, output: result.output)
+		}.value
+	}
+	
+}

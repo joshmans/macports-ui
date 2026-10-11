@@ -203,6 +203,32 @@ final class MacPortsKitTests: XCTestCase {
 		XCTAssertNil(PortAction.install(ports: Array(repeating: "a", count: 201), variants: [], binaryOnly: true).arguments)
 	}
 	
+	func testRefusesPseudoPortNames() {
+		for name in ["installed", "all", "inactive", "Outdated", "leaves"] {
+			XCTAssertNil(PortAction.uninstall(port: name).arguments, "\(name) would act on many ports")
+			if name != "inactive" { XCTAssertNil(PortAction(arguments: ["-N", "uninstall", name]), name) }
+		}
+		XCTAssertEqual(PortAction.uninstallInactive.arguments, ["-N", "uninstall", "inactive"])
+		XCTAssertEqual(PortAction(arguments: ["-N", "uninstall", "inactive"]), .uninstallInactive)
+	}
+	
+	func testGroupsInstalledPorts() {
+		let all = MacPortsParser.parseInstalled("  aom @3.14.1_0\n  aom @3.15.1_0 (active)\n  glib2 @2.88.3_1+x11 (active)\n  bash @5.3.15_0")
+		let ports = MacPortsParser.installedPorts(all: all, requested: ["glib2"], leaves: ["glib2", "bash"])
+		XCTAssertEqual(ports.map(\.name), ["aom", "bash", "glib2"])
+		XCTAssertEqual(ports[0].version, "3.15.1_0")
+		XCTAssertEqual(ports[0].inactiveVersions, ["3.14.1_0"])
+		XCTAssertEqual(ports[2].variants, "+x11")
+		XCTAssertTrue(ports[2].isRequested)
+		XCTAssertFalse(ports[1].isActive, "A port with no active version is flagged")
+		XCTAssertTrue(ports[1].inactiveVersions.isEmpty)
+	}
+	
+	func testParsesDependents() {
+		XCTAssertEqual(MacPortsParser.parseDependents("shared-mime-info depends on bash\nWarning: old\ngit depends on bash"), ["shared-mime-info", "git"])
+		XCTAssertEqual(MacPortsParser.parseDependents("Port bash has no dependents!"), [])
+	}
+	
 	func testSplitsBatchedOutputIntoPerStepResults() {
 		let output = "Selfupdate ok\n@@PORT-EXIT:0\nInstalling\nfailed\n@@PORT-EXIT:1\n"
 		let results = PromptingPortRunner.splitResults(output, expected: 2, fallbackStatus: 0)

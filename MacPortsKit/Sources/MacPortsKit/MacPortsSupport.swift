@@ -43,7 +43,7 @@ enum MacPortsParser {
 	
 	/// Whether a name is safe to pass to the port command.
 	static func isValidPortName(_ name: String) -> Bool {
-		name.range(of: "^[A-Za-z0-9][A-Za-z0-9._+-]*$", options: .regularExpression) != nil
+		PortAction.isValidPortName(name)
 	}
 	
 	/// Candidate MacPorts names for a Homebrew formula name.

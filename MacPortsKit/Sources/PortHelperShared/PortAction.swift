@@ -24,15 +24,24 @@ public enum PortAction: Equatable {
 	/// Uninstalls one port.
 	case uninstall(port: String)
 	
+	/// Uninstalls every inactive version of every port.
+	case uninstallInactive
+	
 	
 	// MARK: - Validation
 	
 	/// The largest number of ports in a single action.
 	public static let maximumPorts = 200
 	
+	/// Names MacPorts treats as sets of ports (`port uninstall installed` removes everything). They are never a valid single port.
+	static let reservedNames: Set<String> = [
+		"all", "installed", "uninstalled", "active", "inactive", "actinact", "outdated", "obsolete",
+		"requested", "unrequested", "leaves", "rleaves", "current"
+	]
+	
 	/// Whether a name is safe to pass to the `port` command.
 	public static func isValidPortName(_ name: String) -> Bool {
-		name.count <= 100 && name.range(of: "^[A-Za-z0-9][A-Za-z0-9._+-]*$", options: .regularExpression) != nil
+		!reservedNames.contains(name.lowercased()) && name.count <= 100 && name.range(of: "^[A-Za-z0-9][A-Za-z0-9._+-]*$", options: .regularExpression) != nil
 	}
 	
 	/// Whether a string is a single variant such as `+x11` or `-quartz`.
@@ -62,6 +71,9 @@ public enum PortAction: Equatable {
 		case .uninstall(let port):
 			guard Self.isValidPortName(port) else { return nil }
 			return ["-N", "uninstall", port]
+			
+		case .uninstallInactive:
+			return ["-N", "uninstall", "inactive"]
 		}
 	}
 	
@@ -74,6 +86,11 @@ public enum PortAction: Equatable {
 		var rest = arguments[...]
 		guard rest.first == "-N" else { return nil }
 		rest = rest.dropFirst()
+		
+		if rest == ["uninstall", "inactive"] {
+			self = .uninstallInactive
+			return
+		}
 		
 		if rest == ["selfupdate"] {
 			self = .selfUpdate

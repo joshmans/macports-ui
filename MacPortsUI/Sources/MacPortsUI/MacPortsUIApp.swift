@@ -4,8 +4,8 @@ import SwiftUI
 struct MacPortsUIApp: App {
 	var body: some Scene {
 		WindowGroup("MacPorts UI") {
-			OutdatedView()
-				.frame(minWidth: 620, minHeight: 400)
+			RootView()
+				.frame(minWidth: 820, minHeight: 400)
 		}
 	}
 }
