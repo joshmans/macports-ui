@@ -98,7 +98,7 @@ struct OutdatedView: View {
 	
 	@ToolbarContentBuilder private var toolbar: some ToolbarContent {
 		ToolbarItem {
-			Button { showingHelper = true } label: { Label("Helper", systemImage: "lock.shield") }
+			Button { showingHelper = true } label: { Label("Helper", systemImage: "gearshape") }
 				.help("Privileged helper: upgrade without a password prompt")
 		}
 		ToolbarItem {
