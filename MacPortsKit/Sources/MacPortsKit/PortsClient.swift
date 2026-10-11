@@ -90,18 +90,18 @@ public enum PortsClient {
 		await Task.detached(priority: .userInitiated) { fetchOutdatedBlocking() }.value
 	}
 	
-	/// Upgrades the given ports from prebuilt archives only, with one administrator prompt (or none with the helper).
-	public static func upgrade(_ names: [String]) async -> ActionResult {
-		await Task.detached { 
-			let result = MacPortsPackageChecker.upgrade(names)
+	/// Upgrades the given ports from prebuilt archives only, with one administrator prompt (or none with the helper). With the helper, `onOutput` receives the log while the command runs.
+	public static func upgrade(_ names: [String], onOutput: (@Sendable (String) -> Void)? = nil) async -> ActionResult {
+		await Task.detached {
+			let result = MacPortsPackageChecker.upgrade(names, onOutput: onOutput)
 			return ActionResult(status: result.status, output: result.output)
 		}.value
 	}
 	
 	/// Refreshes the port index.
-	public static func selfUpdate() async -> ActionResult {
+	public static func selfUpdate(onOutput: (@Sendable (String) -> Void)? = nil) async -> ActionResult {
 		await Task.detached {
-			let result = MacPortsPackageChecker.selfUpdate()
+			let result = MacPortsPackageChecker.selfUpdate(onOutput: onOutput)
 			return ActionResult(status: result.status, output: result.output)
 		}.value
 	}

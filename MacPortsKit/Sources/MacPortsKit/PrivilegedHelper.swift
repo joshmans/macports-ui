@@ -92,16 +92,25 @@ enum PrivilegedHelper {
 	// MARK: - Running
 	
 	/// Runs the actions through the helper. Returns `nil` if the helper cannot be reached, so the caller can fall back to the password prompt.
-	static func run(_ actions: [PortAction]) -> [CommandRunner.Result]? {
+	static func run(_ actions: [PortAction], onOutput: ((String) -> Void)? = nil) -> [CommandRunner.Result]? {
 		guard #available(macOS 13.0, *),
 			  let requirement = HelperConstants.requirement(identifier: HelperConstants.helperIdentifier, teamIdentifier: ownTeamIdentifier) else { return nil }
 		
 		let connection = NSXPCConnection(machServiceName: HelperConstants.machServiceName, options: .privileged)
-		connection.remoteObjectInterface = NSXPCInterface(with: PortHelperProtocol.self)
+		connection.remoteObjectInterface = makePortHelperInterface()
 		connection.setCodeSigningRequirement(requirement)
 		connection.resume()
 		defer { connection.invalidate() }
 		
+		// A helper left over from an older build cannot stream; the caller falls back to the password prompt until it is re-enabled.
+		let versionSemaphore = DispatchSemaphore(value: 0)
+		var helperVersion: String?
+		let versionProxy = connection.remoteObjectProxyWithErrorHandler { _ in versionSemaphore.signal() } as? PortHelperProtocol
+		versionProxy?.protocolVersion { helperVersion = $0; versionSemaphore.signal() }
+		versionSemaphore.wait()
+		guard helperVersion == HelperConstants.protocolVersion else { return nil }
+		
+		let receiver = OutputReceiver(handler: onOutput)
 		var results = [CommandRunner.Result]()
 		for action in actions {
 			guard let arguments = action.arguments else { return results.isEmpty ? nil : results + [.init(status: -1, output: "Invalid port action.")] }
@@ -109,7 +118,7 @@ enum PrivilegedHelper {
 			let semaphore = DispatchSemaphore(value: 0)
 			var result: CommandRunner.Result?
 			let proxy = connection.remoteObjectProxyWithErrorHandler { _ in semaphore.signal() } as? PortHelperProtocol
-			proxy?.runPort(arguments: arguments) { status, output in
+			proxy?.runPort(arguments: arguments, receiver: receiver) { status, output in
 				result = CommandRunner.Result(status: status, output: output)
 				semaphore.signal()
 			}
@@ -126,8 +135,19 @@ enum PrivilegedHelper {
 /// Runs actions through the helper, falling back to the password prompt if the helper is not reachable.
 struct HelperPortRunner: PrivilegedPortRunner {
 	
-	func run(_ actions: [PortAction]) -> [CommandRunner.Result] {
-		PrivilegedHelper.run(actions) ?? PromptingPortRunner().run(actions)
+	func run(_ actions: [PortAction], onOutput: ((String) -> Void)?) -> [CommandRunner.Result] {
+		PrivilegedHelper.run(actions, onOutput: onOutput) ?? PromptingPortRunner().run(actions, onOutput: onOutput)
 	}
+	
+}
+
+/// Forwards output from the helper to a closure.
+private final class OutputReceiver: NSObject, PortOutputReceiver {
+	
+	private let handler: ((String) -> Void)?
+	
+	init(handler: ((String) -> Void)?) { self.handler = handler }
+	
+	func receive(output: String) { handler?(output) }
 	
 }

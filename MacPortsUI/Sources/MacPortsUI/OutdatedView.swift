@@ -114,16 +114,27 @@ struct OutdatedView: View {
 	
 	private var logSheet: some View {
 		VStack(alignment: .leading, spacing: 12) {
-			Label(model.logFailed ? "Something went wrong" : "Done", systemImage: model.logFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
-				.font(.headline).foregroundStyle(model.logFailed ? .red : .green)
-			ScrollView {
-				Text(model.log ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+			if model.logIsLive {
+				HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Working…").font(.headline) }
+			} else {
+				Label(model.logFailed ? "Something went wrong" : "Done", systemImage: model.logFailed ? "xmark.octagon.fill" : "checkmark.circle.fill")
+					.font(.headline).foregroundStyle(model.logFailed ? .red : .green)
+			}
+			ScrollViewReader { proxy in
+				ScrollView {
+					VStack(alignment: .leading, spacing: 0) {
+						Text(model.log ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+						Color.clear.frame(height: 1).id("end")
+					}
+				}
+				.onChange(of: model.log) { _ in proxy.scrollTo("end") }
 			}
 			.padding(8).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 6))
-			HStack { Spacer(); Button("Close") { model.log = nil }.keyboardShortcut(.defaultAction) }
+			HStack { Spacer(); Button("Close") { model.log = nil }.keyboardShortcut(.defaultAction).disabled(model.logIsLive) }
 		}
 		.padding()
-		.frame(width: 560, height: 360)
+		.frame(width: 620, height: 400)
+		.interactiveDismissDisabled(model.logIsLive)
 	}
 	
 }

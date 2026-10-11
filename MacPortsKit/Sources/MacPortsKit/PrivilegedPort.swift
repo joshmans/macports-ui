@@ -9,7 +9,15 @@ import Foundation
 protocol PrivilegedPortRunner {
 	
 	/// Runs the actions in order and returns one result per action. Stops at the first action that cannot be run at all. Must not be called on the main thread.
-	func run(_ actions: [PortAction]) -> [CommandRunner.Result]
+	func run(_ actions: [PortAction], onOutput: ((String) -> Void)?) -> [CommandRunner.Result]
+	
+}
+
+extension PrivilegedPortRunner {
+	
+	func run(_ actions: [PortAction]) -> [CommandRunner.Result] {
+		run(actions, onOutput: nil)
+	}
 	
 }
 
@@ -18,7 +26,8 @@ struct PromptingPortRunner: PrivilegedPortRunner {
 	
 	static let exitMarker = "@@PORT-EXIT:"
 	
-	func run(_ actions: [PortAction]) -> [CommandRunner.Result] {
+	/// The password prompt runs everything in one `osascript` call, so output can only be delivered at the end.
+	func run(_ actions: [PortAction], onOutput: ((String) -> Void)?) -> [CommandRunner.Result] {
 		let commands = actions.compactMap { action in
 			action.arguments.map { ([MacPortsPackageChecker.portPath] + $0).map(CommandRunner.shellQuote).joined(separator: " ") }
 		}
@@ -29,7 +38,9 @@ struct PromptingPortRunner: PrivilegedPortRunner {
 		// One shell script, so there is one password prompt. Each step reports its exit status on its own marker line.
 		let script = commands.map { "\($0) 2>&1; echo \"\(Self.exitMarker)$?\"" }.joined(separator: "; ")
 		let combined = CommandRunner.runAsAdministrator("/bin/sh", ["-c", script])
-		return Self.splitResults(combined.output, expected: commands.count, fallbackStatus: combined.status)
+		let results = Self.splitResults(combined.output, expected: commands.count, fallbackStatus: combined.status)
+		results.forEach { onOutput?($0.output + "\n") }
+		return results
 	}
 	
 	/// Splits the combined output of a batch into one result per step.

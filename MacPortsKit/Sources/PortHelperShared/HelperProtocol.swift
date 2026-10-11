@@ -23,7 +23,7 @@ public enum HelperConstants {
 	public static let helperIdentifier = "com.otstechs.macportsui.helper"
 	
 	/// Bump when the protocol changes, so the app can tell an outdated helper from a current one.
-	public static let protocolVersion = "1"
+	public static let protocolVersion = "2"
 	
 	/// The code signing requirement a peer must satisfy: signed by the given team with the given identifier.
 	///
@@ -35,15 +35,30 @@ public enum HelperConstants {
 	
 }
 
+/// Receives output while a port command is still running. Implemented by the app.
+@objc public protocol PortOutputReceiver {
+	
+	func receive(output: String)
+	
+}
+
 /// What the app can ask the helper to do.
 @objc public protocol PortHelperProtocol {
 	
 	/// The protocol version the helper implements.
 	func protocolVersion(reply: @escaping (String) -> Void)
 	
-	/// Runs `port` with the given arguments, if they are one of the allowed `PortAction` shapes, and returns the exit status and combined output.
-	func runPort(arguments: [String], reply: @escaping (Int32, String) -> Void)
+	/// Runs `port` with the given arguments, if they are one of the allowed `PortAction` shapes. Output is sent to the receiver as it appears; the reply carries the exit status and the complete output.
+	func runPort(arguments: [String], receiver: PortOutputReceiver, reply: @escaping (Int32, String) -> Void)
 	
+}
+
+/// The XPC interface, with the receiver passed as a remote object.
+public func makePortHelperInterface() -> NSXPCInterface {
+	let interface = NSXPCInterface(with: PortHelperProtocol.self)
+	interface.setInterface(NSXPCInterface(with: PortOutputReceiver.self),
+						   for: #selector(PortHelperProtocol.runPort(arguments:receiver:reply:)), argumentIndex: 1, ofReply: false)
+	return interface
 }
 
 public enum CodeSigning {

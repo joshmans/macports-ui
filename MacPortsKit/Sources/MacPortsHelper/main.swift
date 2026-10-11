@@ -23,7 +23,7 @@ final class HelperService: NSObject, NSXPCListenerDelegate, PortHelperProtocol {
 		// Only the app, signed by the same team as this helper, may connect.
 		guard let requirement = HelperConstants.requirement(identifier: HelperConstants.appIdentifier, teamIdentifier: CodeSigning.ownTeamIdentifier) else { return false }
 		connection.setCodeSigningRequirement(requirement)
-		connection.exportedInterface = NSXPCInterface(with: PortHelperProtocol.self)
+		connection.exportedInterface = makePortHelperInterface()
 		connection.exportedObject = self
 		connection.resume()
 		return true
@@ -35,7 +35,7 @@ final class HelperService: NSObject, NSXPCListenerDelegate, PortHelperProtocol {
 		reply(HelperConstants.protocolVersion)
 	}
 	
-	func runPort(arguments: [String], reply: @escaping (Int32, String) -> Void) {
+	func runPort(arguments: [String], receiver: PortOutputReceiver, reply: @escaping (Int32, String) -> Void) {
 		guard PortAction(arguments: arguments) != nil else {
 			reply(-1, "Rejected: not an allowed port action.")
 			return
@@ -64,9 +64,23 @@ final class HelperService: NSObject, NSXPCListenerDelegate, PortHelperProtocol {
 				return
 			}
 			
-			let data = pipe.fileHandleForReading.readDataToEndOfFile()
+			// Send output to the app as it arrives and keep the complete text for the reply.
+			let handle = pipe.fileHandleForReading
+			let finished = DispatchSemaphore(value: 0)
+			var collected = Data()
+			handle.readabilityHandler = { handle in
+				let data = handle.availableData
+				if data.isEmpty {
+					handle.readabilityHandler = nil
+					finished.signal()
+					return
+				}
+				collected.append(data)
+				receiver.receive(output: String(decoding: data, as: UTF8.self))
+			}
 			process.waitUntilExit()
-			reply(process.terminationStatus, String(decoding: data, as: UTF8.self))
+			finished.wait()
+			reply(process.terminationStatus, String(decoding: collected, as: UTF8.self))
 		}
 	}
 	

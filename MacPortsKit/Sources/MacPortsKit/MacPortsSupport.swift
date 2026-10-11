@@ -138,8 +138,8 @@ enum MacPortsPackageChecker {
 	}
 	
 	/// Upgrades the given ports using prebuilt archives only (`-b` fails instead of compiling).
-	static func upgrade(_ names: [String]) -> CommandRunner.Result {
-		run(.upgrade(ports: names))
+	static func upgrade(_ names: [String], onOutput: ((String) -> Void)? = nil) -> CommandRunner.Result {
+		run(.upgrade(ports: names), onOutput: onOutput)
 	}
 	
 	/// Installs ports. By default only prebuilt archives are used (`-b`); `buildFromSource` allows compiling.
@@ -153,18 +153,18 @@ enum MacPortsPackageChecker {
 	}
 	
 	/// Refreshes the port index.
-	static func selfUpdate() -> CommandRunner.Result {
-		run(.selfUpdate)
+	static func selfUpdate(onOutput: ((String) -> Void)? = nil) -> CommandRunner.Result {
+		run(.selfUpdate, onOutput: onOutput)
 	}
 	
 	/// Runs one privileged action.
-	static func run(_ action: PortAction) -> CommandRunner.Result {
-		runBatch([action]).first ?? .init(status: -1, output: "Nothing was run.")
+	static func run(_ action: PortAction, onOutput: ((String) -> Void)? = nil) -> CommandRunner.Result {
+		runBatch([action], onOutput: onOutput).first ?? .init(status: -1, output: "Nothing was run.")
 	}
 	
 	/// Runs several privileged actions with a single administrator prompt.
-	static func runBatch(_ actions: [PortAction]) -> [CommandRunner.Result] {
-		PortPrivileges.runner.run(actions)
+	static func runBatch(_ actions: [PortAction], onOutput: ((String) -> Void)? = nil) -> [CommandRunner.Result] {
+		PortPrivileges.runner.run(actions, onOutput: onOutput)
 	}
 	
 	/// The ports whose local index version differs from the prebuilt archive on the server. Installing those with `-b` would fail until the index is refreshed.
