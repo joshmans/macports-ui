@@ -22,6 +22,12 @@ for cx in [165.0, 495.0] {
     g.draw(fromCenter: NSPoint(x: cx, y: 215), radius: 0, toCenter: NSPoint(x: cx, y: 215), radius: 110, options: [])
 }
 
+// Light pills under the icon labels: Finder draws them in dark text regardless of appearance.
+for cx in [165.0, 495.0] {
+    let pill = NSBezierPath(roundedRect: NSRect(x: cx - 62, y: 98, width: 124, height: 26), xRadius: 13, yRadius: 13)
+    NSColor(white: 1, alpha: 0.88).setFill(); pill.fill()
+}
+
 func text(_ s: String, size: CGFloat, weight: NSFont.Weight, alpha: CGFloat, y: CGFloat) {
     let p = NSMutableParagraphStyle(); p.alignment = .center
     let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: weight),
