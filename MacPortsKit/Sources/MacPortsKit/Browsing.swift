@@ -14,6 +14,13 @@ public struct CatalogPort: Identifiable, Hashable, Sendable {
 	public let version: String
 	public let categories: [String]
 	public let summary: String
+	
+	public init(name: String, version: String, categories: [String], summary: String) {
+		self.name = name
+		self.version = version
+		self.categories = categories
+		self.summary = summary
+	}
 }
 
 public struct PortVariant: Identifiable, Hashable, Sendable {

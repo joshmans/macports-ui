@@ -40,11 +40,14 @@ final class BrowseModel: ObservableObject {
 	/// Reads the catalog again, for example after the port index was refreshed.
 	func reload() async {
 		catalog = nil
-		let loaded = await PortsClient.fetchCatalog()
+		apply(catalog: await PortsClient.fetchCatalog())
+		await refreshInstalled()
+	}
+	
+	func apply(catalog loaded: [CatalogPort]) {
 		catalog = loaded
 		categories = Catalog.categories(in: loaded)
 		updateResults()
-		await refreshInstalled()
 	}
 	
 	func refreshInstalled() async {
@@ -53,8 +56,13 @@ final class BrowseModel: ObservableObject {
 	}
 	
 	private func updateResults() {
-		guard let catalog, hasQuery else { results = []; return }
-		results = Catalog.search(search, in: catalog, category: category, limit: Self.limit)
+		if let catalog, hasQuery {
+			results = Catalog.search(search, in: catalog, category: category, limit: Self.limit)
+		} else {
+			results = []
+		}
+		// A port that is no longer listed must not stay selected, or its details and Install button would still be on screen.
+		if let selection, !results.contains(where: { $0.name == selection }) { self.selection = nil }
 	}
 	
 	private func loadDetail() {
