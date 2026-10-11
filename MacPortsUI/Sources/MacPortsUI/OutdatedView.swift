@@ -4,6 +4,7 @@ import MacPortsKit
 struct OutdatedView: View {
 	
 	@StateObject private var model = OutdatedModel()
+	@State private var showingHelper = false
 	
 	var body: some View {
 		VStack(spacing: 0) {
@@ -18,6 +19,12 @@ struct OutdatedView: View {
 		}
 		.toolbar { toolbar }
 		.task { await model.refresh() }
+		.sheet(isPresented: $showingHelper) {
+			VStack(spacing: 0) {
+				HelperSettingsView()
+				HStack { Spacer(); Button("Done") { showingHelper = false }.keyboardShortcut(.defaultAction) }.padding([.horizontal, .bottom])
+			}
+		}
 		.sheet(isPresented: Binding(get: { model.log != nil }, set: { if !$0 { model.log = nil } })) { logSheet }
 	}
 	
@@ -90,6 +97,10 @@ struct OutdatedView: View {
 	}
 	
 	@ToolbarContentBuilder private var toolbar: some ToolbarContent {
+		ToolbarItem {
+			Button { showingHelper = true } label: { Label("Helper", systemImage: "lock.shield") }
+				.help("Privileged helper: upgrade without a password prompt")
+		}
 		ToolbarItem {
 			Button { Task { await model.refresh() } } label: { Label("Check Again", systemImage: "arrow.clockwise") }
 				.disabled(model.isBusy || !model.portInstalled)
