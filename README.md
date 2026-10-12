@@ -75,3 +75,7 @@ swift test --package-path MacPortsUI
 - `MacPortsUI/`: the SwiftUI app
 - `Helper/`: launch daemon plist
 - `scripts/`: app, icon and DMG build scripts
+
+## License
+
+[MIT](LICENSE)
